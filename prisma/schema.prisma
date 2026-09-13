@@ -1,0 +1,386 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role { EMPLOYEE SUPERVISOR MANAGER FINANCE ADMIN MANAGEMENT }
+enum TenantStatus { ACTIVE SUSPENDED CANCELLED }
+enum Plan { TRIAL STARTER BUSINESS ENTERPRISE }
+enum ReimbursementStatus { DRAFT SUBMITTED APPROVED REJECTED REVISION_REQUIRED FINANCE_REVIEW READY_TO_PAY PAID CANCELLED }
+enum JobStatus { OPEN COMPLETED CANCELLED }
+enum AdvanceStatus { DRAFT SUBMITTED APPROVED PAID SETTLEMENT_SUBMITTED SETTLED REJECTED }
+enum ApprovalDecision { APPROVED REJECTED REVISION }
+enum ApprovalEntity { REIMBURSEMENT CASH_ADVANCE }
+enum VendorBillStatus { DRAFT SUBMITTED VERIFIED PAID CANCELLED }
+
+model Tenant {
+  id          String       @id @default(cuid())
+  code        String       @unique
+  slug        String       @unique
+  name        String
+  legalName   String?
+  taxId       String?
+  address     String?
+  plan        Plan         @default(TRIAL)
+  status      TenantStatus @default(ACTIVE)
+  maxUsers    Int          @default(10)
+  trialEndsAt DateTime?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  users              User[]
+  departments        Department[]
+  branches           Branch[]
+  customers          Customer[]
+  vendors            Vendor[]
+  jobs               Job[]
+  expenseCategories  ExpenseCategory[]
+  approvalRules      ApprovalRule[]
+  reimbursements     Reimbursement[]
+  reimbursementItems ReimbursementItem[]
+  approvals          Approval[]
+  payments           Payment[]
+  cashAdvances       CashAdvance[]
+  costEstimates      JobCostEstimate[]
+  vendorBills        VendorBill[]
+  auditLogs          AuditLog[]
+}
+
+model PlatformAdmin {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String
+  passwordHash String
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model Department {
+  id        String   @id @default(cuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields:[tenantId], references:[id], onDelete:Cascade)
+  code      String
+  name      String
+  active    Boolean  @default(true)
+  users     User[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, code])
+  @@index([tenantId, active])
+}
+
+model Branch {
+  id        String   @id @default(cuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields:[tenantId], references:[id], onDelete:Cascade)
+  code      String
+  name      String
+  city      String?
+  active    Boolean  @default(true)
+  users     User[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, code])
+  @@index([tenantId, active])
+}
+
+model User {
+  id              String      @id @default(cuid())
+  tenantId        String
+  tenant          Tenant      @relation(fields:[tenantId], references:[id], onDelete:Cascade)
+  employeeNo      String?
+  name            String
+  email           String
+  passwordHash    String
+  role            Role        @default(EMPLOYEE)
+  departmentId    String?
+  department      Department? @relation(fields:[departmentId], references:[id])
+  branchId        String?
+  branch          Branch?     @relation(fields:[branchId], references:[id])
+  bankName        String?
+  bankAccount     String?
+  bankAccountName String?
+  active          Boolean     @default(true)
+  reimbursements  Reimbursement[]
+  advances        CashAdvance[]
+  approvals       Approval[]  @relation("Approver")
+  auditLogs       AuditLog[]
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  @@unique([tenantId, email])
+  @@unique([tenantId, employeeNo])
+  @@index([tenantId, role, active])
+}
+
+model Customer {
+  id        String   @id @default(cuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields:[tenantId], references:[id], onDelete:Cascade)
+  code      String
+  name      String
+  taxId     String?
+  address   String?
+  active    Boolean  @default(true)
+  jobs      Job[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, code])
+  @@index([tenantId, active])
+}
+
+model Vendor {
+  id              String   @id @default(cuid())
+  tenantId        String
+  tenant          Tenant   @relation(fields:[tenantId], references:[id], onDelete:Cascade)
+  code            String
+  name            String
+  taxId           String?
+  address         String?
+  bankName        String?
+  bankAccount     String?
+  bankAccountName String?
+  active          Boolean  @default(true)
+  reimbursementItems ReimbursementItem[]
+  costEstimates   JobCostEstimate[]
+  bills           VendorBill[]
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([tenantId, code])
+  @@index([tenantId, active])
+}
+
+model Job {
+  id             String      @id @default(cuid())
+  tenantId       String
+  tenant         Tenant      @relation(fields:[tenantId], references:[id], onDelete:Cascade)
+  jobNo          String
+  customerId     String
+  customer       Customer    @relation(fields:[customerId], references:[id])
+  serviceType    String
+  blAwb          String?
+  pol            String?
+  pod            String?
+  etd            DateTime?
+  eta            DateTime?
+  revenue        Decimal?    @db.Decimal(18,2)
+  vendorCost     Decimal?    @db.Decimal(18,2)
+  status         JobStatus   @default(OPEN)
+  reimbursements Reimbursement[]
+  advances       CashAdvance[]
+  costEstimates  JobCostEstimate[]
+  vendorBills    VendorBill[]
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  @@unique([tenantId, jobNo])
+  @@index([tenantId, status])
+}
+
+model ExpenseCategory {
+  id        String   @id @default(cuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields:[tenantId], references:[id], onDelete:Cascade)
+  code      String
+  name      String
+  active    Boolean  @default(true)
+  items     ReimbursementItem[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, code])
+  @@index([tenantId, active])
+}
+
+model ApprovalRule {
+  id           String         @id @default(cuid())
+  tenantId     String
+  tenant       Tenant         @relation(fields:[tenantId], references:[id], onDelete:Cascade)
+  entityType   ApprovalEntity
+  minAmount    Decimal        @default(0) @db.Decimal(18,2)
+  maxAmount    Decimal?       @db.Decimal(18,2)
+  approverRole Role
+  priority     Int            @default(0)
+  active       Boolean        @default(true)
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  @@index([tenantId, entityType, active, priority])
+}
+
+model Reimbursement {
+  id               String              @id @default(cuid())
+  tenantId         String
+  tenant           Tenant              @relation(fields:[tenantId], references:[id], onDelete:Cascade)
+  claimNo          String
+  userId           String
+  user             User                @relation(fields:[userId], references:[id])
+  jobId            String?
+  job              Job?                @relation(fields:[jobId], references:[id])
+  status           ReimbursementStatus @default(DRAFT)
+  requiredApprover Role                @default(SUPERVISOR)
+  totalAmount      Decimal             @default(0) @db.Decimal(18,2)
+  notes            String?
+  items            ReimbursementItem[]
+  approvals        Approval[]
+  payment          Payment?
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+
+  @@unique([tenantId, claimNo])
+  @@index([tenantId, status])
+  @@index([tenantId, userId])
+  @@index([tenantId, jobId])
+}
+
+model ReimbursementItem {
+  id                 String          @id @default(cuid())
+  tenantId           String
+  tenant             Tenant          @relation(fields:[tenantId], references:[id], onDelete:Cascade)
+  reimbursementId    String
+  reimbursement      Reimbursement   @relation(fields:[reimbursementId], references:[id], onDelete:Cascade)
+  categoryId         String
+  category           ExpenseCategory @relation(fields:[categoryId], references:[id])
+  vendorId           String?
+  vendorMaster       Vendor?         @relation(fields:[vendorId], references:[id])
+  expenseDate        DateTime
+  vendor             String?
+  description        String
+  amount             Decimal         @db.Decimal(18,2)
+  receiptUrl         String?
+  receiptHash        String?
+  duplicateSuspected Boolean         @default(false)
+  createdAt          DateTime        @default(now())
+
+  @@index([tenantId, receiptHash])
+  @@index([tenantId, reimbursementId])
+}
+
+model Approval {
+  id              String             @id @default(cuid())
+  tenantId        String
+  tenant          Tenant             @relation(fields:[tenantId], references:[id], onDelete:Cascade)
+  reimbursementId String?
+  reimbursement   Reimbursement?     @relation(fields:[reimbursementId], references:[id], onDelete:Cascade)
+  cashAdvanceId   String?
+  cashAdvance     CashAdvance?       @relation(fields:[cashAdvanceId], references:[id], onDelete:Cascade)
+  entityType      ApprovalEntity
+  approverId      String
+  approver        User               @relation("Approver", fields:[approverId], references:[id])
+  decision        ApprovalDecision
+  note            String?
+  createdAt       DateTime           @default(now())
+
+  @@index([tenantId, entityType])
+}
+
+model Payment {
+  id              String        @id @default(cuid())
+  tenantId        String
+  tenant          Tenant        @relation(fields:[tenantId], references:[id], onDelete:Cascade)
+  reimbursementId String        @unique
+  reimbursement   Reimbursement @relation(fields:[reimbursementId], references:[id], onDelete:Cascade)
+  paidAt          DateTime      @default(now())
+  bank            String?
+  referenceNo     String?
+  proofUrl        String?
+  amount          Decimal       @db.Decimal(18,2)
+  createdAt       DateTime      @default(now())
+
+  @@index([tenantId, paidAt])
+}
+
+model CashAdvance {
+  id                   String        @id @default(cuid())
+  tenantId             String
+  tenant               Tenant        @relation(fields:[tenantId], references:[id], onDelete:Cascade)
+  advanceNo            String
+  userId               String
+  user                 User          @relation(fields:[userId], references:[id])
+  jobId                String?
+  job                  Job?          @relation(fields:[jobId], references:[id])
+  purpose              String
+  amount               Decimal       @db.Decimal(18,2)
+  actualAmount         Decimal?      @db.Decimal(18,2)
+  neededAt             DateTime?
+  status               AdvanceStatus @default(DRAFT)
+  requiredApprover     Role          @default(SUPERVISOR)
+  settlementNote       String?
+  settlementReceiptUrl String?
+  settledAt            DateTime?
+  paymentReference     String?
+  approvals            Approval[]
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime      @updatedAt
+
+  @@unique([tenantId, advanceNo])
+  @@index([tenantId, status])
+  @@index([tenantId, userId])
+}
+
+model JobCostEstimate {
+  id          String   @id @default(cuid())
+  tenantId    String
+  tenant      Tenant   @relation(fields:[tenantId], references:[id], onDelete:Cascade)
+  jobId       String
+  job         Job      @relation(fields:[jobId], references:[id], onDelete:Cascade)
+  category    String
+  description String?
+  vendorId    String?
+  vendor      Vendor?  @relation(fields:[vendorId], references:[id])
+  amount      Decimal  @db.Decimal(18,2)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([tenantId, jobId])
+}
+
+model VendorBill {
+  id               String           @id @default(cuid())
+  tenantId         String
+  tenant           Tenant           @relation(fields:[tenantId], references:[id], onDelete:Cascade)
+  billNo           String
+  vendorId         String
+  vendor           Vendor           @relation(fields:[vendorId], references:[id])
+  jobId            String?
+  job              Job?             @relation(fields:[jobId], references:[id])
+  invoiceNo        String?
+  invoiceDate      DateTime?
+  dueDate          DateTime?
+  description      String?
+  amount           Decimal          @db.Decimal(18,2)
+  status           VendorBillStatus @default(DRAFT)
+  invoiceUrl       String?
+  paidAt           DateTime?
+  paymentReference String?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  @@unique([tenantId, billNo])
+  @@index([tenantId, status, dueDate])
+  @@index([tenantId, jobId])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  tenantId   String
+  tenant     Tenant   @relation(fields:[tenantId], references:[id], onDelete:Cascade)
+  userId     String?
+  user       User?    @relation(fields:[userId], references:[id])
+  entityType String
+  entityId   String
+  action     String
+  detail     String?
+  createdAt  DateTime @default(now())
+
+  @@index([tenantId, entityType, createdAt])
+}
