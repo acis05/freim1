@@ -1,4 +1,10 @@
-# Freim Apps — Multi-Tenant SaaS
+# Freim Apps
+## Railway build hotfix (2026-09-13)
+
+This revision fixes Prisma P1012 during `prisma generate`: all Prisma enum values are now declared one value per line. The project also pins Node 22.x and npm 10.x for a more predictable Railpack build.
+
+If the previous Railway deployment failed during `prisma generate`, no database migration was executed yet. Push this revision and redeploy; a database reset is not required.
+ — Multi-Tenant SaaS
 
 **Freight & Reimbursement Management** untuk perusahaan freight forwarding.
 
