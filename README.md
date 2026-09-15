@@ -292,3 +292,6 @@ public/brand/
 templates/
 railway.json
 ```
+
+## Hotfix 2026-09-15 — Railway TypeScript Role.includes
+Build Railway yang sudah melewati Prisma dapat gagal pada `app/jobs/[id]/page.tsx` karena TypeScript menginfer array enum role terlalu sempit saat `.includes(user.role)` dipakai. Source revisi ini mengetik daftar role secara eksplisit sebagai `Role[]` pada Job Detail dan role-gated views terkait.
