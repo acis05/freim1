@@ -1,3 +1,10 @@
+## FIX 5 — Job Creation UX
+
+- Menambahkan tombol `+ New Job` di halaman Jobs / Shipment.
+- Menambahkan route `/jobs/new` untuk Admin, Supervisor, dan Manager.
+- New Job tervalidasi tenant dan langsung redirect ke Job Costing.
+- Jika customer belum ada, Admin diarahkan membuat Customer terlebih dahulu.
+
 # Freim Apps
 ## Railway build hotfix (2026-09-13)
 
