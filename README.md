@@ -302,3 +302,22 @@ Build Railway yang sudah melewati Prisma dapat gagal pada `app/jobs/[id]/page.ts
 Jika registration gagal, cari `[REGISTER_COMPANY_ERROR]` di Railway Deploy Logs. Jika login gagal karena database, cari `[TENANT_LOGIN_ERROR]`.
 
 Pada Railway web service, `DATABASE_URL` harus menjadi reference variable ke PostgreSQL service, contoh `${{Postgres.DATABASE_URL}}`. Pre-deploy sekarang menjalankan migration + seed dalam satu command agar urutannya eksplisit.
+
+## FIX 4 - Runtime migration fallback
+Railway service baru dapat mengabaikan legacy Config as Code (`railway.json`). Agar fresh PostgreSQL tetap otomatis memiliki schema, `npm start` pada FIX 4 menjalankan:
+
+```text
+npm run db:deploy
+npm run db:seed
+next start
+```
+
+Dengan demikian tabel multi-tenant dibuat sebelum web server menerima request, walaupun Pre-Deploy Command belum dikonfigurasi di Railway Dashboard.
+
+Untuk production yang lebih matang, tetap disarankan mengisi **Settings -> Deploy -> Pre-deploy Command** dengan:
+
+```bash
+npx prisma migrate deploy && npm run db:seed
+```
+
+Setelah itu migration di `start` dapat dipindahkan kembali ke pre-deploy-only jika memakai beberapa replica.

@@ -1,11 +1,11 @@
 {
   "name": "freim-apps-multitenant",
-  "version": "1.0.0",
+  "version": "1.0.4",
   "private": true,
   "scripts": {
     "dev": "next dev",
     "build": "prisma generate && next build",
-    "start": "next start -H 0.0.0.0 -p ${PORT:-3000}",
+    "start": "npm run db:deploy && npm run db:seed && next start -H 0.0.0.0 -p ${PORT:-3000}",
     "typecheck": "tsc --noEmit",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
@@ -23,13 +23,13 @@
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "xlsx": "^0.18.5",
-    "prisma": "^6.16.0"
+    "prisma": "^6.16.0",
+    "tsx": "^4.20.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
     "@types/react": "^19.1.0",
     "@types/react-dom": "^19.1.0",
-    "tsx": "^4.20.0",
     "typescript": "^5.9.0"
   },
   "packageManager": "npm@10.9.2",
