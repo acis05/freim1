@@ -1,4 +1,70 @@
-import { db } from "@/lib/db";import { hash } from "bcryptjs";import { normalizeCode,slugify } from "@/lib/format";import { createSession } from "@/lib/auth";import { redirect } from "next/navigation";import { ApprovalEntity,Role } from "@prisma/client";
-const categories=[["TRUCKING","Trucking"],["CUSTOMS","Customs / Clearance"],["PORT","Port / Terminal Charge"],["HANDLING","Handling"],["TOLL","Toll"],["PARKING","Parking"],["FUEL","Fuel"],["COURIER","Courier"],["DOC","Documentation"],["WAREHOUSE","Warehouse"],["MEAL","Meal"],["HOTEL","Hotel"],["OTHER","Other"]] as const;
-export default async function Register({searchParams}:{searchParams:Promise<{exists?:string}>}){if(process.env.ALLOW_SELF_REGISTER==="false")redirect("/login");const q=await searchParams;async function create(fd:FormData){"use server";const companyName=String(fd.get("companyName")||"").trim();const code=normalizeCode(String(fd.get("companyCode")||""));const name=String(fd.get("name")||"").trim();const email=String(fd.get("email")||"").trim().toLowerCase();const password=String(fd.get("password")||"");if(companyName.length<3||code.length<3||name.length<2||password.length<8)throw new Error("Data registrasi tidak valid");const existing=await db.tenant.findUnique({where:{code}});if(existing)redirect("/register-company?exists=1");const trialDays=Number(process.env.TRIAL_DAYS||14);const result=await db.$transaction(async tx=>{const tenant=await tx.tenant.create({data:{name:companyName,code,slug:`${slugify(companyName)}-${code.toLowerCase()}`,plan:"TRIAL",status:"ACTIVE",maxUsers:10,trialEndsAt:new Date(Date.now()+trialDays*86400000)}});const dept=await tx.department.create({data:{tenantId:tenant.id,code:"ADM",name:"Administration"}});const branch=await tx.branch.create({data:{tenantId:tenant.id,code:"HQ",name:"Head Office"}});for(const [c,n] of categories)await tx.expenseCategory.create({data:{tenantId:tenant.id,code:c,name:n}});for(const entityType of [ApprovalEntity.REIMBURSEMENT,ApprovalEntity.CASH_ADVANCE]){await tx.approvalRule.createMany({data:[{tenantId:tenant.id,entityType,minAmount:0,maxAmount:5000000,approverRole:Role.SUPERVISOR,priority:10},{tenantId:tenant.id,entityType,minAmount:5000000.01,maxAmount:20000000,approverRole:Role.MANAGER,priority:20},{tenantId:tenant.id,entityType,minAmount:20000000.01,maxAmount:null,approverRole:Role.MANAGEMENT,priority:30}]})}const user=await tx.user.create({data:{tenantId:tenant.id,name,email,passwordHash:await hash(password,10),role:"ADMIN",departmentId:dept.id,branchId:branch.id,active:true}});return{tenant,user}});await createSession(result.user.id,result.tenant.id);redirect("/dashboard")}
-return <div className="login-wrap"><div className="auth-card"><img className="auth-logo" src="/brand/freim-logo.png" alt="Freim Apps"/><h2>Buat Company Workspace</h2><p className="muted">Setiap perusahaan mendapatkan ruang data terpisah di PostgreSQL.</p>{q.exists&&<div className="alert">Company Code sudah dipakai. Pilih code lain.</div>}<form action={create}><div className="field"><label>Company Name</label><input name="companyName" placeholder="PT Contoh Logistik" required/></div><div className="field"><label>Company Code</label><input name="companyCode" placeholder="CONTOH: CTL" required/><small className="muted">Dipakai saat login. 3–20 karakter A-Z, angka, atau tanda minus.</small></div><div className="row"><div className="field"><label>Admin Name</label><input name="name" required/></div><div className="field"><label>Admin Email</label><input name="email" type="email" required/></div></div><div className="field"><label>Password</label><input name="password" type="password" minLength={8} required/></div><button className="btn" style={{width:"100%"}}>Create Trial Workspace</button></form><p style={{textAlign:"center",fontSize:13}}><a className="link" href="/login">Kembali ke login</a></p></div></div>}
+import { db } from "@/lib/db";
+import { hash } from "bcryptjs";
+import { normalizeCode,slugify } from "@/lib/format";
+import { createSession } from "@/lib/auth";
+import { redirect } from "next/navigation";
+import { ApprovalEntity,Prisma,Role } from "@prisma/client";
+
+const categories=[
+  ["TRUCKING","Trucking"],["CUSTOMS","Customs / Clearance"],["PORT","Port / Terminal Charge"],
+  ["HANDLING","Handling"],["TOLL","Toll"],["PARKING","Parking"],["FUEL","Fuel"],
+  ["COURIER","Courier"],["DOC","Documentation"],["WAREHOUSE","Warehouse"],["MEAL","Meal"],
+  ["HOTEL","Hotel"],["OTHER","Other"]
+] as const;
+
+export default async function Register({searchParams}:{searchParams:Promise<{exists?:string;error?:string}>}){
+  if(process.env.ALLOW_SELF_REGISTER==="false") redirect("/login");
+  const q=await searchParams;
+
+  async function create(fd:FormData){
+    "use server";
+    const companyName=String(fd.get("companyName")||"").trim();
+    const code=normalizeCode(String(fd.get("companyCode")||""));
+    const name=String(fd.get("name")||"").trim();
+    const email=String(fd.get("email")||"").trim().toLowerCase();
+    const password=String(fd.get("password")||"");
+    if(companyName.length<3||code.length<3||name.length<2||password.length<8) redirect("/register-company?error=invalid");
+
+    try {
+      const existing=await db.tenant.findUnique({where:{code}});
+      if(existing) redirect("/register-company?exists=1");
+
+      const trialDays=Math.max(1,Number(process.env.TRIAL_DAYS||14)||14);
+      const passwordHash=await hash(password,10);
+      const result=await db.$transaction(async tx=>{
+        const tenant=await tx.tenant.create({data:{
+          name:companyName,
+          code,
+          slug:`${slugify(companyName)||"company"}-${code.toLowerCase()}`,
+          plan:"TRIAL",
+          status:"ACTIVE",
+          maxUsers:10,
+          trialEndsAt:new Date(Date.now()+trialDays*86400000),
+        }});
+        const dept=await tx.department.create({data:{tenantId:tenant.id,code:"ADM",name:"Administration"}});
+        const branch=await tx.branch.create({data:{tenantId:tenant.id,code:"HQ",name:"Head Office"}});
+        await tx.expenseCategory.createMany({data:categories.map(([categoryCode,categoryName])=>({tenantId:tenant.id,code:categoryCode,name:categoryName}))});
+        for(const entityType of [ApprovalEntity.REIMBURSEMENT,ApprovalEntity.CASH_ADVANCE]){
+          await tx.approvalRule.createMany({data:[
+            {tenantId:tenant.id,entityType,minAmount:0,maxAmount:5000000,approverRole:Role.SUPERVISOR,priority:10},
+            {tenantId:tenant.id,entityType,minAmount:5000000.01,maxAmount:20000000,approverRole:Role.MANAGER,priority:20},
+            {tenantId:tenant.id,entityType,minAmount:20000000.01,maxAmount:null,approverRole:Role.MANAGEMENT,priority:30},
+          ]});
+        }
+        const user=await tx.user.create({data:{tenantId:tenant.id,name,email,passwordHash,role:Role.ADMIN,departmentId:dept.id,branchId:branch.id,active:true}});
+        return {tenant,user};
+      },{maxWait:10000,timeout:20000});
+
+      await createSession(result.user.id,result.tenant.id);
+      redirect("/dashboard");
+    } catch (error) {
+      if(error instanceof Prisma.PrismaClientKnownRequestError && error.code==="P2002") redirect("/register-company?exists=1");
+      // Re-throw Next.js redirects so framework can handle them.
+      if(error instanceof Error && error.message==="NEXT_REDIRECT") throw error;
+      console.error("[REGISTER_COMPANY_ERROR]",error);
+      redirect("/register-company?error=server");
+    }
+  }
+
+  return <div className="login-wrap"><div className="auth-card"><img className="auth-logo" src="/brand/freim-logo.png" alt="Freim Apps"/><h2>Buat Company Workspace</h2><p className="muted">Setiap perusahaan mendapatkan ruang data terpisah di PostgreSQL.</p>{q.exists&&<div className="alert">Company Code sudah dipakai. Pilih code lain.</div>}{q.error==="invalid"&&<div className="alert">Data registrasi belum valid. Pastikan Company Code minimal 3 karakter dan password minimal 8 karakter.</div>}{q.error==="server"&&<div className="alert">Server belum dapat membuat workspace. Cek Railway Deploy Logs untuk kode <b>[REGISTER_COMPANY_ERROR]</b>.</div>}<form action={create}><div className="field"><label>Company Name</label><input name="companyName" placeholder="PT Contoh Logistik" required/></div><div className="field"><label>Company Code</label><input name="companyCode" placeholder="CONTOH: CTL" required/><small className="muted">Dipakai saat login. 3–20 karakter A-Z, angka, atau tanda minus.</small></div><div className="row"><div className="field"><label>Admin Name</label><input name="name" required/></div><div className="field"><label>Admin Email</label><input name="email" type="email" required/></div></div><div className="field"><label>Password</label><input name="password" type="password" minLength={8} required/></div><button className="btn" style={{width:"100%"}}>Create Trial Workspace</button></form><p style={{textAlign:"center",fontSize:13}}><a className="link" href="/login">Kembali ke login</a></p></div></div>;
+}

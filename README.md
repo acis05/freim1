@@ -295,3 +295,10 @@ railway.json
 
 ## Hotfix 2026-09-15 — Railway TypeScript Role.includes
 Build Railway yang sudah melewati Prisma dapat gagal pada `app/jobs/[id]/page.tsx` karena TypeScript menginfer array enum role terlalu sempit saat `.includes(user.role)` dipakai. Source revisi ini mengetik daftar role secara eksplisit sebagai `Role[]` pada Job Detail dan role-gated views terkait.
+
+## Runtime database diagnostics (FIX 3)
+`/api/health` sekarang benar-benar mengakses PostgreSQL dan menghitung tabel `Tenant`. Jika health endpoint mengembalikan HTTP 503, cek `DATABASE_URL` dan migration.
+
+Jika registration gagal, cari `[REGISTER_COMPANY_ERROR]` di Railway Deploy Logs. Jika login gagal karena database, cari `[TENANT_LOGIN_ERROR]`.
+
+Pada Railway web service, `DATABASE_URL` harus menjadi reference variable ke PostgreSQL service, contoh `${{Postgres.DATABASE_URL}}`. Pre-deploy sekarang menjalankan migration + seed dalam satu command agar urutannya eksplisit.
